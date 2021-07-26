@@ -1,0 +1,612 @@
+---
+title: "Exploratory Data Analysis"
+author: "STOR 320.(01 OR 02) Group 1 (Ex: STOR 320.01 Group 12)"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(countrycode)
+library(rvest)
+library(dplyr)
+library(tidyr)
+library(xtable)
+library(modelr)
+library(broom)
+library(class)
+library(lubridate)
+library(pracma)
+
+# Import Data Below
+df = read_csv("hotel_bookings.csv")
+
+#Initial Data Manipulations
+df = df %>% mutate_if(is.character, as.factor)
+df$country_name = countrycode(df$country, origin = "iso3c", destination = "country.name")
+df$arrival_date_month <- factor(df$arrival_date_month, levels = month.name)
+```
+
+```{r}
+## different dataframes - Tara
+hotels <- read_csv("hotel_bookings.csv")
+hotels_refined = hotels %>% select(hotel, arrival_date_month, arrival_date_day_of_month, arrival_date_year, country ,adr, is_canceled) %>% rename(Hotel_Type = hotel, Country_of_Origin = country, Arrival_month = arrival_date_month, Arrival_date = arrival_date_day_of_month, Arrival_year = arrival_date_year, Average_Daily_Rate = adr)
+
+month_levels <- c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+repeat_levels <- c(0, 1)
+hotels_refined$Arrival_month =  factor(hotels_refined$Arrival_month, levels = month_levels)
+
+city_hotels = hotels_refined %>% filter(Hotel_Type == "City Hotel", is_canceled == 0) %>% filter(Country_of_Origin != "NULL")
+resort_hotels = hotels_refined %>% filter(Hotel_Type == "Resort Hotel", is_canceled == 0) %>% filter(Country_of_Origin != "NULL")
+
+
+city_hotels_freq = city_hotels%>% filter(Average_Daily_Rate != 0.00)%>% group_by(Country_of_Origin, Arrival_month) %>% summarise(n = n()) %>% mutate(frequency = n/sum(n))
+
+```
+
+```{r}
+#different dataframes - David
+df1 = df %>%
+  arrange(arrival_date_month) %>%
+  select(lead_time, arrival_date_month) %>%
+  group_by(arrival_date_month) %>% 
+  summarize(avg_lead_time=mean(lead_time)) %>%
+  ungroup()
+```
+
+# Creator: TARA GHORPADKAR
+
+### Q1: How do seasonal patterns associated with the country of origin affect ADR (Average Daily Rate)?
+
+```{r}
+hotels_refined = hotels %>% select(hotel, arrival_date_month, arrival_date_day_of_month, arrival_date_year, country ,adr, is_canceled) %>% rename(Hotel_Type = hotel, Country_of_Origin = country, Arrival_month = arrival_date_month, Arrival_date = arrival_date_day_of_month, Arrival_year = arrival_date_year, Average_Daily_Rate = adr)
+
+month_levels <- c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+repeat_levels <- c(0, 1)
+hotels_refined$Arrival_month =  factor(hotels_refined$Arrival_month, levels = month_levels)
+
+city_hotels = hotels_refined %>% filter(Hotel_Type == "City Hotel", is_canceled == 0) %>% filter(Country_of_Origin != "NULL")
+resort_hotels = hotels_refined %>% filter(Hotel_Type == "Resort Hotel", is_canceled == 0) %>% filter(Country_of_Origin != "NULL")
+
+
+city_hotels_freq = city_hotels%>% filter(Average_Daily_Rate != 0.00)%>% group_by(Country_of_Origin, Arrival_month) %>% summarise(n = n()) %>% mutate(frequency = n/sum(n))
+
+
+resort_hotels_freq = resort_hotels %>% filter(Average_Daily_Rate != 0.00)%>% group_by(Country_of_Origin, Arrival_month) %>% summarise(n = n()) %>% mutate(frequency = n/sum(n))
+
+
+city_hotels_adr = city_hotels %>% group_by(Country_of_Origin, Arrival_month) %>% arrange(Country_of_Origin, Arrival_month) %>% summarize_at(vars(Average_Daily_Rate), list( ~mean(., na.rm = TRUE) )) %>% rename(Average_Monthly_Rate = Average_Daily_Rate) 
+
+resort_hotels_adr = resort_hotels %>% group_by(Country_of_Origin, Arrival_month) %>% arrange(Country_of_Origin, Arrival_month) %>% summarize_at(vars(Average_Daily_Rate), list( ~mean(., na.rm = TRUE) )) %>% rename(Average_Monthly_Rate = Average_Daily_Rate) 
+
+city_hotels_top = city_hotels %>% group_by(Country_of_Origin) %>% summarise(Num_Customers = n()) %>% arrange(desc(Num_Customers)) %>% head(10)
+city_hotels_join = inner_join(city_hotels_adr, city_hotels_top, by = "Country_of_Origin")
+city_hotels_join
+
+resort_hotels_top = resort_hotels %>% group_by(Country_of_Origin) %>% summarise(Num_Customers = n()) %>% arrange(desc(Num_Customers)) %>% head(10)
+resort_hotels_join = inner_join(resort_hotels_adr, resort_hotels_top, by = "Country_of_Origin")
+resort_hotels_join
+
+
+city_hotels_join %>% ggplot(aes(x = Arrival_month, y = Average_Monthly_Rate, color = Country_of_Origin)) + geom_point() + theme(axis.text.y = element_text(angle = 45)) + theme(axis.text.x = element_text(angle = 50, hjust = 1), panel.background = element_blank(), plot.title = element_text(hjust = 0.5)) + ggtitle("City Hotels")
+
+resort_hotels_join %>% ggplot() + geom_point(mapping = aes(x = Arrival_month, y = Average_Monthly_Rate, color = Country_of_Origin)) + theme(axis.text.y = element_text(angle = 45)) + theme(axis.text.x = element_text(angle = 50, hjust = 1), panel.background = element_blank(), plot.title = element_text(hjust = 0.5)) + ggtitle("Resort Hotels")
+
+
+
+city_hotels_freq = city_hotels_freq %>% filter(n > 80, frequency < 0.6) 
+city_hotels_freq %>% ggplot() + geom_point(mapping = aes(x = Arrival_month, y = frequency, color = Country_of_Origin)) + theme(axis.text.y = element_text(angle = 45)) + theme(axis.text.x = element_text(angle = 50, hjust = 1), panel.background = element_blank(), plot.title = element_text(hjust = 0.5)) + ggtitle("City Hotel")
+
+resort_hotels_freq = resort_hotels_freq %>% filter(n > 80) 
+resort_hotels_freq %>% ggplot() + geom_point(mapping = aes(x = Arrival_month, y = frequency, color = Country_of_Origin)) + theme(axis.text.y = element_text(angle = 45)) + theme(axis.text.x = element_text(angle = 50, hjust = 1), panel.background = element_blank(), plot.title = element_text(hjust = 0.5))+ ggtitle("Resort Hotel")
+
+
+city_hotels2 = hotels %>% filter(hotel == "City Hotel", is_canceled == 0) %>% select(arrival_date_year, arrival_date_month, arrival_date_day_of_month,stays_in_week_nights, stays_in_weekend_nights, adr) %>% mutate(length_of_stay = stays_in_week_nights + stays_in_weekend_nights) %>% arrange(arrival_date_year, arrival_date_month, arrival_date_day_of_month)
+
+
+
+city_hotels2$arrival_date_month = as.integer(factor(city_hotels2$arrival_date_month, levels = month.name))
+
+
+city_hotels2 = city_hotels2 %>% select(arrival_date_year, arrival_date_month, arrival_date_day_of_month, length_of_stay, adr) %>% unite("arrival_date", c("arrival_date_year", "arrival_date_month", "arrival_date_day_of_month"), sep = "/") %>% filter(adr != 0.00)
+
+city_hotels2$arrival_date <- as.Date(city_hotels2$arrival_date)
+city_hotels2 = city_hotels2 %>% arrange(arrival_date)  %>% group_by(arrival_date) %>% summarise(avg_length_of_stay = mean(length_of_stay), avg_adr = mean(adr))
+
+
+city_hotels2 %>% ggplot() + geom_point(mapping = aes(x = arrival_date, y = avg_adr, color = avg_length_of_stay)) + ggtitle("City Hotels")
+city_hotels2
+
+
+
+
+resort_hotels2 = hotels %>% filter(hotel == "Resort Hotel", is_canceled == 0) %>% select(arrival_date_year, arrival_date_month, arrival_date_day_of_month,stays_in_week_nights, stays_in_weekend_nights, adr) %>% mutate(length_of_stay = stays_in_week_nights + stays_in_weekend_nights) %>% arrange(arrival_date_year, arrival_date_month, arrival_date_day_of_month)
+
+
+
+resort_hotels2$arrival_date_month = as.integer(factor(resort_hotels2$arrival_date_month, levels = month.name))
+
+
+resort_hotels2 = resort_hotels2 %>% select(arrival_date_year, arrival_date_month, arrival_date_day_of_month, length_of_stay, adr) %>% unite("arrival_date", c("arrival_date_year", "arrival_date_month", "arrival_date_day_of_month"), sep = "/") %>% filter(adr != 0.00)
+
+resort_hotels2$arrival_date <- as.Date(resort_hotels2$arrival_date)
+resort_hotels2 = resort_hotels2 %>% arrange(arrival_date)  %>% group_by(arrival_date) %>% summarise(avg_length_of_stay = mean(length_of_stay), avg_adr = mean(adr))
+
+
+resort_hotels2 %>% ggplot() + geom_point(mapping = aes(x = arrival_date, y = avg_adr, color = avg_length_of_stay)) + ggtitle("Resort Hotels")
+resort_hotels2
+
+```
+
+### Q2: How does the average daily rate (ADR) change over time?
+
+```{r}
+model_data_city = city_hotels2
+start_date = as.Date("2015-07-01")
+model_data_city$arrival_date <- as.numeric(difftime(model_data_city$arrival_date, start_date, unit = "days"))
+NumDays.city <- model_data_city$arrival_date
+xc <- cos(2*pi*NumDays.city/366)
+xs <- sin(2*pi*NumDays.city/366)
+fit.lm <- lm(model_data_city$avg_adr ~ xc + xs)
+fit <- fitted(fit.lm)
+summary(fit.lm)
+pred <- predict(fit.lm, newdata = data.frame(NumDays.city = NumDays.city))
+plot(model_data_city$avg_adr ~ NumDays.city, data= model_data_city, xlim=c(1, 900))
+lines(fit, col="red")
+lines(NumDays.city, pred, col="blue")
+
+NumDays.city <- model_data_city$arrival_date
+Avg_ADR.city <- model_data_city$avg_adr
+fit.lm <- lm(Avg_ADR.city ~ poly(NumDays.city, 6, raw=TRUE))
+fit <- fitted(fit.lm)
+summary(fit.lm)
+pred <- predict(fit.lm, newdata = data.frame(NumDays.city = NumDays.city))
+plot(Avg_ADR.city ~ NumDays.city, data= model_data_city, xlim=c(1, 900))
+lines(fit, col="red")
+lines(NumDays.city, pred, col="blue")
+
+
+```
+
+# Interpreter: SIDDHARTHA VANAM
+
+### Q1: Does a correlation exist between time on waitlist and a greater ADR?
+
+```{r}
+df %>% select(adr, reservation_status, days_in_waiting_list, reserved_room_type, assigned_room_type, market_segment, country_name, stays_in_week_nights, stays_in_weekend_nights, arrival_date_year, lead_time, hotel) %>% 
+  filter(days_in_waiting_list < 300, adr <200, days_in_waiting_list != 0) %>% 
+  ggplot(aes(days_in_waiting_list, adr)) + geom_point(aes(color=reserved_room_type, alpha =0.4)) + geom_smooth(method="lm", se=T) + facet_wrap(~hotel, nrow=2) +labs(title = "ADR vs. Days on the Waitlist",
+       x = "Days on the Waitlist",
+       y = "ADR")+
+  theme(panel.background = element_blank(),
+        plot.title = element_text(hjust = 0.5)) + scale_alpha(guide = 'none')
+```
+
+### Q2: Which customer types tend to cancel non-refund bookings?
+
+```{r}
+df[df$deposit_type== "Non Refund", ] %>% group_by(customer_type, is_canceled ) %>% mutate(count = n()) %>% 
+  ggplot(aes(x=reorder(customer_type, -count), y=count)) + geom_bar(stat = "identity", position = position_dodge()) + theme_bw() + 
+  labs(title = "Cancelled Non-Refund bookings by Customer Type",
+       x = "Customer Type",
+       y = "Count") +
+  theme(panel.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+```
+
+# Orator: DAVID SNIDER
+
+### Q1: How does lead time vary by month?
+
+  + Maintain low prices during busy months and use waitlist to book excess customers in non-busy months
+  + Raise prices during busy months to raise more revenue
+
+```{r}
+ggplot(df1) + 
+  geom_line(aes(
+    x=arrival_date_month,
+    y=avg_lead_time,
+    group=1
+  )) + 
+  ggtitle("Average Lead Time vs Arrival Month") + 
+  xlab("Arrival Month") + 
+  ylab("Average Lead Time (Days)") + 
+  theme(axis.text.x=element_text(angle=30, vjust=1,),
+        plot.title=element_text(hjust=0.5))
+```
+
+### Q2: Which variables best predict cancellation?
+
+```{r}
+library(MASS)
+leadgraph = df %>% 
+  group_by(as.logical(is_canceled)) %>%
+  summarize(avg_lead_time = mean(lead_time)) %>% 
+  ungroup() %>%
+  rename(value=avg_lead_time)
+leadgraph$key=rep("Average Lead Time", 2)
+
+prevgraph = df %>%
+  group_by(as.logical(is_canceled)) %>%
+  summarize(avg_prev_canc = mean(previous_cancellations)) %>% 
+  ungroup() %>%
+  rename(value=avg_prev_canc)
+prevgraph$key=rep("Average Previous Cancellations", 2)
+
+prevuncancgraph = df %>%
+  group_by(as.logical(is_canceled)) %>%
+  summarize(avg_prev_uncanc = mean(previous_bookings_not_canceled)) %>% 
+  ungroup() %>%
+  rename(value=avg_prev_uncanc)
+prevuncancgraph$key=rep("Average Previous Bookings Not Canceled", 2)
+
+adrgraph = df %>%
+  group_by(as.logical(is_canceled)) %>%
+  summarize(avg_adr = mean(adr)) %>% 
+  ungroup() %>%
+  rename(value=avg_adr)
+adrgraph$key=rep("Average ADR", 2)
+
+fullgraph = bind_rows(leadgraph, prevgraph, prevuncancgraph, adrgraph)
+
+ggplot(fullgraph, aes(x=`as.logical(is_canceled)`, y=value)) + 
+  geom_col() + 
+  facet_wrap(~key, scales = "free")
+  
+pvals = c()
+
+pvals = c(pvals, t.test(df$lead_time~as.logical(df$is_canceled))$p.value[[1]])
+pvals = c(pvals, t.test(df$previous_cancellations~as.logical(df$is_canceled))$p.value[[1]])
+pvals = c(pvals, t.test(df$previous_bookings_not_canceled~as.logical(df$is_canceled))$p.value[[1]])
+pvals = c(pvals, t.test(df$adr~as.logical(df$is_canceled))$p.value[[1]])
+
+vars = c("Average Lead Time",
+         "Average Previous Cancellations",
+         "Average Previous Bookings Not Canceled",
+         "Average ADR")
+
+pvaltable = data.frame(Variables = vars, "P values" = pvals)
+pvaltable$P.values = as.character(pvaltable$P.values)
+to_print = pvaltable %>% 
+  xtable(align="ccc")
+print(to_print, 
+      "html", 
+      html.table.attributes="align='center',
+                             rules='rows',
+                             width=50%,
+                             frame='hsides',
+                             border-spacing=5px"
+      )
+hotelgraph = df %>%
+  group_by(hotel) %>%
+  summarize(
+    n=n(),
+    num_canceled = sum(is_canceled),
+    prop_canceled = mean(is_canceled)
+  ) %>%
+  ungroup() %>%
+  rename(value=hotel)
+hotelgraph$key=rep("Hotel", 2)
+
+repeatgraph = df %>%
+  group_by(as.logical(is_repeated_guest)) %>%
+  summarize(
+    n=n(),
+    num_canceled = sum(is_canceled),
+    prop_canceled = mean(is_canceled)
+  ) %>%
+  ungroup() %>%
+  rename(value=`as.logical(is_repeated_guest)`)
+repeatgraph$key=rep("Is Repeated Guest?", 2)
+repeatgraph$value=as.character(repeatgraph$value)
+
+fullgraph2 = bind_rows(hotelgraph, repeatgraph)
+
+ggplot(fullgraph2, aes(x=value, y=prop_canceled)) + 
+  geom_col() + 
+  facet_wrap(~key, scales="free")
+detach("package:MASS", unload = TRUE)
+```
+
+# Deliverer: WALKER BURGIN
+
+### Q1: Are bookings by travel agents and tour operators (TA/TO) more likely to get cancelled than direct bookings?
+
+```{r}
+hotel_bookings <- read_csv("hotel_bookings.csv")
+pop_Mean_canceled = mean(hotel_bookings$is_canceled)
+pop_Mean_canceled #our population sample
+```
+
+```{r}
+hotel_bookings$cumul_cancellations <- hotel_bookings$previous_cancellations+hotel_bookings$is_canceled
+hotel_bookings$cumul_bookings <- hotel_bookings$previous_bookings_not_canceled+1-hotel_bookings$is_canceled
+hotel_bookings$customer_cancellation_rate_total <- hotel_bookings$cumul_cancellations/(hotel_bookings$cumul_cancellations +hotel_bookings$cumul_bookings)
+```
+
+```{r, include=FALSE}
+replace_na(hotel_bookings$customer_cancellation_rate_total,0)
+```
+
+```{r}
+fcustomer_cancellation_rate_total <-tibble(
+  filter(hotel_bookings,customer_cancellation_rate_total>0&customer_cancellation_rate_total<1)
+)
+fcustomer_cancellation_rate_total$cancellation_rate <- fcustomer_cancellation_rate_total$cumul_cancellations/(fcustomer_cancellation_rate_total$cumul_bookings+fcustomer_cancellation_rate_total$cumul_cancellations)
+```
+
+```{r,include=FALSE}
+replace_na(fcustomer_cancellation_rate_total$cancellation_rate,0)
+```
+
+```{r}
+ggplot(data=fcustomer_cancellation_rate_total)+geom_histogram(mapping=aes(cancellation_rate),fill="red",color="white")+geom_vline(xintercept=pop_Mean_canceled,color="red")+
+labs(title = "Cancellation Rates by Customer",
+       x = "Cancellation Rate",
+       y = "Frequency") +
+  theme(panel.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+agentDist <- filter(hotel_bookings,hotel_bookings$distribution_channel=="TA/TO")
+agentDist$cancellation_rate <- agentDist$cumul_cancellations /(agentDist$cumul_bookings+agentDist$cumul_cancellations)
+agent_sampl_Mean <- mean(agentDist$is_canceled)
+agent_sampl_Mean #agents-only sample
+```
+
+```{r}
+table <- agentDist %>%
+  group_by(agent) %>%
+  summarize(mean = mean(as.integer(is_canceled)), sum = sum(as.integer(is_canceled)))
+tableB <- filter(table,mean>0&mean<1)
+ggplot(data=tableB)+geom_histogram(mapping=aes(mean),color="white",fill="purple")+geom_vline(xintercept=agent_sampl_Mean,color="red")+geom_vline(xintercept=pop_Mean_canceled,color="purple")+
+labs(title = "Cancellation Rate, per Agent",
+       x = "Cancellation Rate",
+       y = "Frequency") +
+  theme(panel.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+nonAgentDist <- tibble(
+  filter(hotel_bookings,agent=="NULL"&customer_cancellation_rate_total>0&customer_cancellation_rate_total<1)
+)
+nonAgentMean <- mean(nonAgentDist$customer_cancellation_rate_total)
+
+random_sample_rates <- tibble(tableB)
+random_sample_rates$randPop <- sample(fcustomer_cancellation_rate_total$cancellation_rate,168)
+random_sample_rates$randNon <- sample(nonAgentDist$customer_cancellation_rate_total,168)
+
+random_sample_rates$randNon <- sample(nonAgentDist$customer_cancellation_rate_total,168)
+ggplot(data=random_sample_rates)+geom_histogram(mapping=aes(tableB$mean),color="white",fill="red")+geom_histogram(mapping=aes(randPop),color="white",fill="purple")+geom_histogram(mapping=aes(randNon),color="white",fill="blue")+geom_vline(xintercept=agent_sampl_Mean,color="red")+geom_vline(xintercept=pop_Mean_canceled,color="purple")+geom_vline(xintercept=nonAgentMean,color="blue")+labs(title = "Cancellation Rate, per Agent (red), per non-Agent (blue), and population (purple)",
+       x = "Cancellation Rate",
+       y = "Frequency") + theme(panel.background = element_blank())
+#Therefore, our data implies that agents (represented in red) consistently cancel more nonAgents (blue) and the general population of both (purple).
+```
+
+
+
+
+### Q2: How does the pattern of people staying affect the ADR? For example, does a greater amount of children in the hotel negatively affect the ADR?
+
+```{r}
+adr_pop_Mean = mean(hotel_bookings$adr)
+# mean for the population is 101.8311
+adr_revised<-hotel_bookings %>% filter(adr != 5400 & adr != 510)
+ggplot(data=adr_revised)+geom_histogram(mapping=aes(adr),fill="blue",color="white")+geom_vline(xintercept = adr_pop_Mean,color="blue")
+```
+```{r}
+child <- as.integer(hotel_bookings$children)
+hotel_bookings$childCount = child
+withoutChild<-tibble(filter(hotel_bookings,child=="0"&adr != 5400 & adr != 510))
+adr_sampl_Mean = mean(withoutChild$adr)
+# mean for the childless is 97.47
+ggplot(data=withoutChild)+geom_histogram(mapping=aes(adr),color="white",fill="red")+geom_vline(xintercept = adr_sampl_Mean,color="red")+geom_vline(xintercept = adr_pop_Mean,color="blue")
+#Both histograms appear extremely similar, but as our means are significantly different given our dataset, we can conclude that, on average, groups that have children have a lower ADR than those without.
+
+```
+
+# Follow-up Questions
+
+### New Questions Based Off Initial Investigation
+
+- Q1: Can we model hotel average daily rate over a time series sinusoidally or parabolically?
+- Q2: Which model best predicts cancellation?
+- Q3: When is the proportion of cancellations the highest? (Maybe optimize adr with the least number of cancellations?)
+- Q4: Can certain combinations of arrival month and country of origin negatively weigh on the adr vs other combinations of arrival month and country of origin?
+
+### Investigation of Follow-up Questions
+
+Our group decided to investigate Q1 and Q2 in further detail.
+
+### Can we model hotel average daily rate over a time series sinusoidally or parabolically?
+
+```{r}
+
+model_data_resort = resort_hotels2
+model_data_resort$arrival_date <- as.numeric(difftime(model_data_resort$arrival_date, start_date, unit = "days"))
+NumDays.resort <- model_data_resort$arrival_date
+xc <- cos(2*pi*NumDays.resort/366)
+xs <- sin(2*pi*NumDays.resort/366)
+fit.lm <- lm(model_data_resort$avg_adr ~ xc + xs)
+fit <- fitted(fit.lm)
+summary(fit.lm)
+pred <- predict(fit.lm, newdata = data.frame(NumDays.resort = NumDays.resort))
+plot(model_data_resort$avg_adr ~ NumDays.resort, data= model_data_resort, xlim=c(1, 900))
+lines(fit, col="red")
+lines(NumDays.resort, pred, col="blue")
+
+Avg_ADR.resort <- model_data_resort$avg_adr
+fit.lm <- lm(Avg_ADR.resort ~ poly(NumDays.resort, 6, raw=TRUE))
+fit <- fitted(fit.lm)
+summary(fit.lm)
+pred <- predict(fit.lm, newdata = data.frame(NumDays.resort = NumDays.resort))
+plot(Avg_ADR.resort ~ NumDays.resort, data= model_data_resort, xlim=c(1, 900))
+lines(fit, col="red")
+lines(NumDays.resort, pred, col="blue")
+```
+
+### Which model best predicts cancellation?
+
+```{r}
+library(MASS)
+df_log = df %>%
+  dplyr::select(hotel,
+         is_canceled,
+         lead_time,
+         previous_cancellations,
+         previous_bookings_not_canceled,
+         adr,
+         is_repeated_guest
+         ) %>% mutate(id=row_number())
+
+set.seed(216)
+df_train=df_log %>% 
+  sample_frac(0.80)
+df_test=anti_join(df_log, df_train, by='id')
+df_train= df_train %>%
+  subset(select = -id)
+df_test= df_test %>%
+  subset(select= -id)
+```
+
+Model 1: Logistic
+
+```{r}
+model1 = glm(
+  is_canceled~., 
+  family="binomial",
+  data=df_train)
+
+options("scipen"=100, "digits"=4)
+summary(model1)
+
+df_test = df_test %>% add_predictions(
+  model1,
+  var="predicted_canc1") %>%
+  mutate(predicted_canc1 = ifelse(predicted_canc1 > 0.5,1,0))
+```
+
+Model 2: Stepwise logistic
+
+```{r}
+model2 = stepAIC(model1)
+
+df_test = df_test %>% add_predictions(
+  model2,
+  var="predicted_canc2") %>%
+  mutate(predicted_canc2 = ifelse(predicted_canc2 > 0.5,1,0))
+```
+
+Model 3: Logistic with twofold interaction
+
+```{r}
+model3 = glm(
+  is_canceled~.^2, 
+  family="binomial",
+  data=df_train)
+tidy(model3)[,c("term", "estimate", "p.value")]
+
+df_test = df_test %>% add_predictions(
+  model3,
+  var="predicted_canc3") %>%
+  mutate(predicted_canc3 = ifelse(predicted_canc3 > 0.5,1,0))
+```
+
+Model4: k-NN, k=5
+
+```{r}
+#standardize dataset
+standardize = function(vector) {
+  return(sd(vector)*vector + 
+           mean(vector)
+              )
+}
+
+df_knn = df_test %>%
+  mutate(
+    previous_cancellations=standardize(previous_cancellations),
+    previous_bookings_not_canceled=standardize(previous_bookings_not_canceled),
+    hotel=ifelse(hotel=="Resort Hotel", 1, 0),
+    hotel=standardize(hotel),
+    lead_time=standardize(lead_time),
+    adr=standardize(adr)
+    ) %>% 
+  mutate(predicted_canc4=knn(
+    train=dplyr::select(
+      df_train,
+      lead_time,
+      adr,
+      previous_cancellations
+      ),
+    test=dplyr::select(
+      df_test,
+      lead_time,
+      adr,
+      previous_cancellations
+    ),
+    cl=factor(
+      df_train$is_canceled,
+      levels=c(0,1),
+      labels=c("0","1")
+    ),
+    k=5)
+  ) %>%
+  dplyr::select(predicted_canc4)
+
+df_test = bind_cols(df_test, df_knn) %>%
+  mutate(predicted_canc4 = as.integer(predicted_canc4)-1)
+```
+
+Metrics
+```{r, results="asis"}
+#input df_test$predicted_canc1, or 2, etc.
+sensitivity = function(predicted_canc) {
+  return(
+    sum(df_test$is_canceled & predicted_canc) /
+      sum(df_test$is_canceled)
+  )
+}
+
+specificity = function(predicted_canc) {
+  return(
+    sum(!df_test$is_canceled & !predicted_canc) /
+      sum(!df_test$is_canceled)
+  )
+}
+
+accuracy = function(predicted_canc) {
+  (
+  sum(df_test$is_canceled & predicted_canc) + 
+    sum(!df_test$is_canceled & !predicted_canc)
+  ) / nrow(df_test)
+}
+
+metrics_table = tribble(
+  ~Model, ~sensitivity, ~specificity, ~accuracy,
+  1, sensitivity(df_test$predicted_canc1), specificity(df_test$predicted_canc1), accuracy(df_test$predicted_canc1),
+  2, sensitivity(df_test$predicted_canc2), specificity(df_test$predicted_canc2), accuracy(df_test$predicted_canc2),
+  3, sensitivity(df_test$predicted_canc3), specificity(df_test$predicted_canc3), accuracy(df_test$predicted_canc3),
+  4, sensitivity(df_test$predicted_canc4), specificity(df_test$predicted_canc4), accuracy(df_test$predicted_canc4)
+)
+
+to_print1 = metrics_table %>% 
+  xtable(align="ccccc")
+print(to_print1, 
+      "html", 
+      html.table.attributes="align='center',
+                             rules='rows',
+                             width=50%,
+                             frame='hsides',
+                             border-spacing=5px"
+)
+detach("package:MASS", unload = TRUE)
+```
+
+
+# Summary
+
+  Our team looked at hotel booking data. Customers visit more often and rates are higher during the summer. However, customers from some countries, particularly those near Portugal, arrive more frequently during winter months. Longer stays are associated with a lower average daily rate, but the majority of stays range from 2-3 days for both hotels. More than the average length of stay, average daily rate seems to oscillate with time of month more often, and is especially present in the resort hotel. However, stays of 1 day are usually plotted higher on the y axis for both graphs compared to stays of 3 days or longer on the same x axis location (meaning on the same day). Our team next reviewed which percentage of the bookings as a whole are canceled: 37%. When we produce the same observation for an agents-only sample, we find that among agents, 41% of bookings are canceled. Comparing the data, we found that agents consistently cancel more non-agents and the general population of both. For the next question, we created a statistic for the population ADR mean, and then filtered the customers without children into a separate data frame to analyze if significant differences exist between the two groups. On average, we found that groups that have children have a lower ADR than those without.
+  For our first follow up question, we wanted to see the difference between a sinusoidal and polynomial regression for the relationship between arrival date and average daily rate. We used data previously arranged to plot arrival time and average daily rate in a time series. In order to find this model, We needed to tweak the arrival date data. Instead of showing the actual arrival date, the x axis now indicated the number of days since the first recorded date of a customer. For both city and resort data, the sinusoidal curve seems to be a better fit. The R^2 values for the polynomial curve are better for both the resort and city data, as they are higher than the sinusoidal R^2 values. The polynomial used was a sextic function, as all graphs seemed to have 5 inflection points. The oscillations in the graph suggested that this data could be plotted using these functions. The R^2 value for resort data sinusoidal was 0.6317, and the R^2 value for resort data polynomial was 0.7256. The R^2 value for city data sinusoidal was 0.3356, and the R^2 value for city data polynomial was 0.6602, indicating that the sextic function was a better fit for both data. This indicates that while the data oscillates, there are certain arrival dates that strongly forecast lower average daily rates and certain arrival dates that strongly forecast higher average daily rates with a peak in the average daily rate ranging around July of each year. For our next question, we asked which model best predicts cancellation. We made 4 models: Model 1 is logistic regression, Model 2 stepwise logistic regression, Model 3 logistic regression with two-variable interaction, and Model 4 k-NN, with k=5. A table of with metrics measuring the success of these models is above. The k-NN model was the most accurate and the most sensitive, but it was the least specific, compared against the other logistic regression models. To determine whether sensitivity or specificity matters more, we need to consider the practical context of our model. We were thinking our model could be used to help hotel managers create a “fast-track” waitlist of people to replace the individuals who are more likely to cancel. As long as the hotels don’t actually guarantee rooms to folks on the fast-track waitlist, it should not matter whether managers wrongly predict cancellation. That is, it should not matter how “specific” managers are. In this context, we care more so about sensitivity. As such, the k-NN model would be the best fit. We finally explored whether there is a correlation or relationship between the days on the waitlist and the hotel’s Average Daily Revenue (ADR). We found a weak negative relationship between days on the waitlist and the ADR for city hotels and a weak positive relationship between the two variables for resort hotels. Next, we explored how often non-refund bookings canceled. The data showed that the “transient” customer type canceled an overwhelming number of bookings.

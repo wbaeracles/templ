@@ -1,0 +1,238 @@
+---
+title: "Final Project"
+author: "Siddhartha Vanam"
+date: "7/7/2021"
+output: html_document
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+The code will need the following libraries:
+
+```{r}
+#library(zeallot)
+#install.packages("zeallot")
+#install.packages("countrycode")
+#install.packages("ISLR")
+#install.packages("caret")
+
+library(tidyverse)
+library(countrycode)
+library(ISLR)
+library(caret)
+
+
+df = "hotel_bookings.csv" %>% read_csv() %>%mutate_if(is.character, as.factor) 
+
+df$country_name = countrycode(df$country, origin = "iso3c", destination = "country.name")
+
+head(df)
+```
+
+## Data Prep
+``` {r}
+#the dataset spans 3 years
+unique(df$arrival_date_year)
+```
+
+``` {r, eval=F}
+#df %>% group_by(hotel) %>% count()
+#df %>% group_by(arrival_date_month) %>% count() %>% arrange(desc(n))
+#df %>% group_by(meal) %>% count() %>% arrange(desc(n))
+#df %>% group_by(country) %>% count() %>% arrange(desc(n))
+#df %>% group_by(market_segment) %>% count() %>% arrange(desc(n))
+#df %>% group_by(distribution_channel) %>% count() %>% arrange(desc(n))
+#df %>% group_by(reserved_room_type) %>% count() %>% arrange(desc(n))
+#df %>% group_by(assigned_room_type) %>% count() %>% arrange(desc(n))
+#df %>% group_by(deposit_type) %>% count() %>% arrange(desc(n))
+#df %>% group_by(agent) %>% count() %>% arrange(desc(n))
+#df %>% group_by(company) %>% count() %>% arrange(desc(n)) #Drop since it has too much null data
+#df %>% group_by(customer_type) %>% count() %>% arrange(desc(n))
+#df %>% group_by(reservation_status) %>% count() %>% arrange(desc(n))
+
+```
+
+```{r, eval=F}
+df %>% summary()
+```
+
+Handle Missing Values
+
+  + Impute the 4 missing values in the Children column with the 0 babies the customers said were present.
+```{r}
+df[df$children %>% is.na(), "children"] = 0
+```
+
+Different Visualizations
+
+```{r}
+ggplot(data = df, aes(x = hotel)) +
+  geom_bar(stat = "count") +
+  labs(title = "Booking Request by Hotel type",
+       x = "Hotel type",
+       y = "No. of bookings") +
+  theme_classic() + scale_color_brewer(palette = "Set2")
+
+```
+
+
+Cancellations by Hotel Type
+
+```{r}
+ggplot(data = df,
+       aes(
+         x = hotel,
+         y = prop.table(stat(count)),
+         fill = factor(is_canceled),
+         label = scales::percent(prop.table(stat(count)))
+       )) +
+  geom_bar(position = position_dodge()) +
+  geom_text(
+    stat = "count",
+    position = position_dodge(.9),
+    vjust = -0.05,
+    size = 3
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Cancellation Status by Hotel Type",
+       x = "Hotel Type",
+       y = "Count") +
+  theme_classic() +
+  scale_fill_discrete(
+    name = "Booking Status",
+    labels = c("Cancelled", "Not Cancelled")
+  )
+
+```
+
+
+```{r}
+ggplot(data = df, aes(
+  x = hotel,
+  y = lead_time,
+  fill = factor(is_canceled)
+)) +
+  geom_boxplot(position = position_dodge()) +
+  labs(
+    title = "Cancellation By Hotel Type",
+    subtitle = "Based on Lead Time",
+    x = "Hotel Type",
+    y = "Lead Time (Days)"
+  ) +
+  scale_fill_discrete(
+    name = "Booking Status",
+    breaks = c("0", "1"),
+    labels = c("Cancelled", "Not Cancelled")
+  ) + theme_classic()
+```
+
+Examining Data by Months
+
+```{r}
+df$arrival_date_month <- factor(df$arrival_date_month, levels = month.name)
+
+# Visualize Hotel traffic on Monthly basis
+ggplot(data = df, aes(x = arrival_date_month)) +
+  geom_bar(fill = "steelblue") +
+  geom_text(stat = "count", aes(label = ..count..), hjust = 1) +
+  coord_flip() + labs(title = "Month-wise Booking Request",
+                      x = "Month",
+                      y = "Count") + theme_classic()
+```
+
+```{r}
+ggplot(df, aes(arrival_date_month, fill = factor(is_canceled))) + geom_bar() + geom_text(stat = "count", aes(label = ..count..), hjust = 1) +
+  coord_flip() + scale_fill_discrete(
+    name = "Booking Status",
+    breaks = c("0", "1"),
+    label = c("Cancelled", "Not Cancelled")
+  ) +
+  labs(title = "Booking Status by Month",
+       x = "Month",
+       y = "Count") + theme_bw()
+```
+
+```{r}
+ggplot(df, aes(arrival_date_month, fill = hotel)) +
+  geom_bar(position = position_dodge()) +
+  labs(title = "Booking Status by Month",
+       x = "Month",
+       y = "Count") + theme_bw() +
+  theme(axis.text.x = element_text(angle = 50, hjust = 1),
+        panel.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r}
+grouped_country_df= df[df$reservation_status == "Check-Out",] %>% group_by(country_name, hotel) %>% mutate(count=n()) %>% filter(count > 500)
+
+ggplot(grouped_country_df, aes(x=reorder(country_name, -count), y=count, fill = hotel)) +
+  geom_bar(stat = "identity", position = position_dodge()) + 
+  labs(title = "Booking Status by Country",
+       x = "Country",
+       y = "count") +
+  theme(axis.text.x = element_text(angle = 50, hjust = 1),
+        panel.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+grouped_country_df = grouped_country_df %>% ungroup(country_name, hotel)
+```
+
+
+```{r}
+grouped_customers_df= df[df$reservation_status == "Check-Out",] %>% group_by(customer_type, hotel) %>% mutate(count=n())
+
+ggplot(grouped_customers_df, aes(x=reorder(customer_type, -count), y=count, fill = hotel)) + 
+  geom_bar(stat = "identity", position = position_dodge()) + 
+  labs(title = "Hotel Preference by Customer Type",
+       x = "Customer Type",
+       y = "Count") +
+  theme(axis.text.x = element_text(angle = 50, hjust = 1),
+        panel.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+grouped_customers_df = grouped_customers_df %>% ungroup(customer_type, hotel)
+
+```
+
+
+## Question 7: Is there a correlation between a greater number of people on the waitlist and a greater ADR?
+
+
+```{r echo=FALSE, out.width="90%", out.height= "90%"}
+df %>% select(adr, reservation_status, days_in_waiting_list, reserved_room_type, assigned_room_type, market_segment, country_name, stays_in_week_nights, stays_in_weekend_nights, arrival_date_year, lead_time, hotel) %>% 
+  filter(days_in_waiting_list < 300, adr <200, days_in_waiting_list != 0) %>% 
+  ggplot(aes(days_in_waiting_list, adr)) + geom_point(aes(color=reserved_room_type, alpha =0.4)) + geom_smooth(method="lm", se=T) + facet_wrap(~hotel, nrow=2) +labs(title = "ADR vs. Days on the Waitlist",
+       x = "Days on the Waitlist",
+       y = "ADR")+
+  theme(panel.background = element_blank(),
+        plot.title = element_text(hjust = 0.5)) + scale_alpha(guide = 'none')
+
+#ggsave("waitlist~ADR_corr.png")
+```
+
+
+
+#Question 8: How often were non-refund bookings canceled?
+
+```{r, eval=T}
+df[df$deposit_type== "Non Refund", ] %>% group_by(customer_type, is_canceled ) %>% mutate(count = n()) %>% 
+  ggplot(aes(x=reorder(customer_type, -count), y=count)) + geom_bar(stat = "identity", position = position_dodge()) + theme_bw() + 
+  labs(title = "Cancelled Non-Refund bookings by Customer Type",
+       x = "Customer Type",
+       y = "Count") +
+  theme(panel.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+#ggsave("nonrefund_count.png")
+```
+
